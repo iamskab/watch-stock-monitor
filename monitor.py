@@ -1,0 +1,191 @@
+import requests
+import json
+import os
+import sys
+from datetime import datetime
+
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
+STORES = [
+    {
+        "name": "Delhi Watch Company",
+        "url": "https://delhiwatchcompany.com/products.json",
+        "site": "https://delhiwatchcompany.com",
+    },
+    {
+        "name": "Kala Watches",
+        "url": "https://kalawatches.com/products.json",
+        "site": "https://kalawatches.com",
+    },
+    {
+        "name": "Coromandel Watch Co",
+        "url": "https://coromandelwatchco.com/products.json",
+        "site": "https://coromandelwatchco.com",
+    },
+]
+
+PHONE = "918016564766"
+STATE_FILE = "stock_state.json"
+
+
+def get_callmebot_apikey():
+    key = os.environ.get("CALLMEBOT_API_KEY", "")
+    if not key:
+        print("WARNING: CALLMEBOT_API_KEY not set. Notifications disabled.")
+    return key
+
+
+def load_state():
+    if os.path.exists(STATE_FILE):
+        with open(STATE_FILE, "r") as f:
+            return json.load(f)
+    return {}
+
+
+def save_state(state):
+    with open(STATE_FILE, "w") as f:
+        json.dump(state, f, indent=2)
+
+
+def fetch_products(store):
+    products = []
+    page = 1
+    while True:
+        resp = requests.get(
+            store["url"],
+            params={"limit": 250, "page": page},
+            headers={"User-Agent": "WatchStockMonitor/1.0"},
+            timeout=30,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        batch = data.get("products", [])
+        if not batch:
+            break
+        products.extend(batch)
+        page += 1
+        if len(batch) < 250:
+            break
+    return products
+
+
+ACCESSORY_KEYWORDS = [
+    "strap", "bracelet", "buckle", "tool", "box", "cap", "shirt",
+    "t-shirt", "tee", "merchandise", "merch", "poster", "print",
+    "sticker", "mug", "keychain", "pin", "hat", "hoodie", "coaster",
+    "card", "notebook", "tote", "nato", "mesh", "sailcloth",
+    "paratrooper", "suede", "nappa", "denim", "canvas", "leather",
+    "saffiano", "bonklip", "rubber", "silicone",
+]
+
+
+def is_likely_watch(product):
+    product_type = (product.get("product_type") or "").lower()
+    tags = [t.lower() for t in (product.get("tags") or [])]
+    title = product.get("title", "").lower()
+    handle = (product.get("handle") or "").lower()
+
+    if any(kw in title for kw in ACCESSORY_KEYWORDS):
+        return False
+    if any(kw in product_type for kw in ACCESSORY_KEYWORDS):
+        return False
+
+    if "watch" in title or "watch" in product_type:
+        return True
+    if any("watch" in t for t in tags):
+        return True
+    if "edition" in title or "chronograph" in title:
+        return True
+
+    max_price = 0
+    for v in product.get("variants", []):
+        try:
+            max_price = max(max_price, float(v.get("price", "0")))
+        except ValueError:
+            pass
+    if max_price >= 3000:
+        return True
+
+    return False
+
+
+def check_store(store):
+    in_stock = []
+    products = fetch_products(store)
+    for product in products:
+        if not is_likely_watch(product):
+            continue
+
+        for variant in product.get("variants", []):
+            if variant.get("available"):
+                in_stock.append({
+                    "store": store["name"],
+                    "product": product["title"],
+                    "variant": variant.get("title", "Default"),
+                    "price": variant.get("price", "N/A"),
+                    "url": f"{store['site']}/products/{product.get('handle', '')}",
+                })
+                break
+    return in_stock
+
+
+def send_whatsapp(message, api_key):
+    url = "https://api.callmebot.com/whatsapp.php"
+    params = {
+        "phone": PHONE,
+        "text": message,
+        "apikey": api_key,
+    }
+    resp = requests.get(url, params=params, timeout=30)
+    if resp.status_code == 200:
+        print(f"WhatsApp notification sent successfully")
+    else:
+        print(f"WhatsApp send failed: {resp.status_code} - {resp.text}")
+
+
+def main():
+    print(f"[{datetime.now().isoformat()}] Watch stock monitor running...")
+
+    api_key = get_callmebot_apikey()
+    prev_state = load_state()
+    current_state = {}
+    new_in_stock = []
+
+    for store in STORES:
+        print(f"  Checking {store['name']}...")
+        try:
+            items = check_store(store)
+            for item in items:
+                key = f"{item['store']}|{item['product']}|{item['variant']}"
+                current_state[key] = item
+                if key not in prev_state:
+                    new_in_stock.append(item)
+            print(f"    Found {len(items)} in-stock items")
+        except Exception as e:
+            print(f"    Error checking {store['name']}: {e}")
+            for key, val in prev_state.items():
+                if val.get("store") == store["name"]:
+                    current_state[key] = val
+
+    if new_in_stock:
+        print(f"\n  NEW IN STOCK: {len(new_in_stock)} items!")
+        message = f"🚨 WATCH ALERT! {len(new_in_stock)} new item(s) in stock:\n\n"
+        for item in new_in_stock:
+            message += f"• {item['product']} ({item['variant']}) - ₹{item['price']}\n"
+            message += f"  {item['store']}\n"
+            message += f"  {item['url']}\n\n"
+        message += f"Checked at {datetime.now().strftime('%H:%M %d-%b-%Y')}"
+
+        if api_key:
+            send_whatsapp(message, api_key)
+        else:
+            print(f"\n  Message (not sent - no API key):\n{message}")
+    else:
+        print(f"\n  No new items in stock.")
+
+    save_state(current_state)
+    print("Done.")
+
+
+if __name__ == "__main__":
+    main()
