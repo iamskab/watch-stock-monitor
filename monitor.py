@@ -144,18 +144,43 @@ def send_telegram(message, token, chat_id):
         print(f"Telegram send failed: {resp.status_code} - {resp.text}")
 
 
+def send_daily_summary(token, chat_id, all_in_stock):
+    if not token or not chat_id:
+        return
+
+    message = "\U0001f4cb <b>Daily Stock Summary (12 PM IST)</b>\n\n"
+
+    if all_in_stock:
+        message += f"{len(all_in_stock)} watch(es) currently in stock:\n\n"
+        for item in all_in_stock:
+            message += f"• <b>{item['product']}</b> ({item['variant']})\n"
+            message += f"  ₹{item['price']} - {item['store']}\n"
+            message += f"  <a href=\"{item['url']}\">Buy Now</a>\n\n"
+    else:
+        message += "No watches in stock across all 3 stores.\n\n"
+        message += "• Delhi Watch Company - all sold out\n"
+        message += "• Kala Watches - all sold out\n"
+        message += "• Coromandel Watch Co - all sold out\n\n"
+        message += "You'll be notified instantly when something restocks."
+
+    send_telegram(message, token, chat_id)
+
+
 def main():
+    daily_summary = os.environ.get("DAILY_SUMMARY", "false") == "true"
     print(f"[{datetime.now().isoformat()}] Watch stock monitor running...")
 
     token, chat_id = get_telegram_config()
     prev_state = load_state()
     current_state = {}
     new_in_stock = []
+    all_in_stock = []
 
     for store in STORES:
         print(f"  Checking {store['name']}...")
         try:
             items = check_store(store)
+            all_in_stock.extend(items)
             for item in items:
                 key = f"{item['store']}|{item['product']}|{item['variant']}"
                 current_state[key] = item
@@ -183,6 +208,10 @@ def main():
             print(f"\n  Message (not sent - no config):\n{message}")
     else:
         print(f"\n  No new items in stock.")
+
+    if daily_summary:
+        print("  Sending daily summary...")
+        send_daily_summary(token, chat_id, all_in_stock)
 
     save_state(current_state)
     print("Done.")

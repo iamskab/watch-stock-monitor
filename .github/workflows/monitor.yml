@@ -3,6 +3,7 @@ name: Watch Stock Monitor
 on:
   schedule:
     - cron: '*/10 * * * *'  # Every 10 minutes
+    - cron: '30 6 * * *'    # 12:00 PM IST daily (06:30 UTC)
   workflow_dispatch:  # Manual trigger
 
 jobs:
@@ -27,10 +28,22 @@ jobs:
           restore-keys: |
             stock-state-
 
+      - name: Check if daily summary
+        id: check-summary
+        run: |
+          HOUR=$(date -u +%H)
+          MIN=$(date -u +%M)
+          if [ "$HOUR" = "06" ] && [ "$MIN" -ge "25" ] && [ "$MIN" -le "40" ]; then
+            echo "DAILY_SUMMARY=true" >> $GITHUB_ENV
+          else
+            echo "DAILY_SUMMARY=false" >> $GITHUB_ENV
+          fi
+
       - name: Run monitor
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          DAILY_SUMMARY: ${{ env.DAILY_SUMMARY }}
         run: python monitor.py
 
       - name: Save state
