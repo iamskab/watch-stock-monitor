@@ -1,43 +1,55 @@
 # Watch Stock Monitor - Setup Guide
 
 Monitors Delhi Watch Company, Kala Watches, and Coromandel Watch Co for stock changes.
-Sends WhatsApp notifications to +91 8016564766 when watches come in stock.
+Sends Telegram notifications when watches come in stock.
 
-## Step 1: Set up CallMeBot WhatsApp API (free, 2 minutes)
+## Step 1: Create a Telegram Bot (2 minutes)
 
-1. Save the phone number `+34 644 31 89 43` in your phone contacts (name it "CallMeBot")
-2. Send this WhatsApp message to that number: `I allow callmebot to send me messages`
-3. Wait for a reply — you'll receive your **API key** (a number like `123456`)
-4. Save that API key for Step 3
+1. Open Telegram and search for `@BotFather`
+2. Send `/newbot`
+3. Choose a name (e.g., "Watch Stock Alert")
+4. Choose a username (e.g., "my_watch_stock_bot") — must end in `bot`
+5. BotFather will give you a **token** like `7123456789:AAHxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`
+6. Save that token for Step 3
 
-## Step 2: Create GitHub Repository
+## Step 2: Get Your Chat ID
+
+1. Open your new bot in Telegram and send it any message (e.g., "hello")
+2. Open this URL in your browser (replace TOKEN with your bot token):
+   `https://api.telegram.org/botTOKEN/getUpdates`
+3. Look for `"chat":{"id":XXXXXXXX}` — that number is your **Chat ID**
+4. Save it for Step 3
+
+## Step 3: Create GitHub Repository
 
 ```bash
-cd watch-stock-monitor
+cd ~/watch-stock-monitor
 git init
 git add .
 git commit -m "Initial commit: watch stock monitor"
 ```
 
-Then create a repo on GitHub:
+Then on GitHub.com:
+1. Create a new private repository called `watch-stock-monitor`
+2. Follow the instructions to push an existing repo:
 ```bash
-gh repo create watch-stock-monitor --private --source=. --push
+git remote add origin https://github.com/YOUR_USERNAME/watch-stock-monitor.git
+git branch -M main
+git push -u origin main
 ```
 
-## Step 3: Add the API Key as a GitHub Secret
+## Step 4: Add Secrets on GitHub
 
-```bash
-gh secret set CALLMEBOT_API_KEY --body "YOUR_API_KEY_HERE"
-```
+Go to your repo → Settings → Secrets and variables → Actions → New repository secret
 
-Replace `YOUR_API_KEY_HERE` with the key from Step 1.
+Add these two secrets:
+- Name: `TELEGRAM_BOT_TOKEN` → Value: your bot token from Step 1
+- Name: `TELEGRAM_CHAT_ID` → Value: your chat ID from Step 2
 
-## Step 4: Enable GitHub Actions
+## Step 5: Enable GitHub Actions
 
-The workflow runs automatically every 10 minutes. To trigger manually:
-```bash
-gh workflow run monitor.yml
-```
+The workflow runs automatically every 10 minutes after push. To trigger manually:
+Go to your repo → Actions → "Watch Stock Monitor" → Run workflow
 
 ## How It Works
 
@@ -50,7 +62,8 @@ gh workflow run monitor.yml
 
 ```bash
 pip install -r requirements.txt
-export CALLMEBOT_API_KEY=your_key_here
+set TELEGRAM_BOT_TOKEN=your_token_here
+set TELEGRAM_CHAT_ID=your_chat_id_here
 python monitor.py
 ```
 
@@ -58,7 +71,7 @@ python monitor.py
 
 - **Free** — GitHub Actions free tier gives 2,000 minutes/month
 - At ~10 seconds per run, 6 runs/hour = ~44 minutes/month total usage
-- CallMeBot WhatsApp API is free
+- Telegram Bot API is free with no limits for personal use
 
 ## Adjusting Frequency
 

@@ -24,15 +24,15 @@ STORES = [
     },
 ]
 
-PHONE = "918016564766"
 STATE_FILE = "stock_state.json"
 
 
-def get_callmebot_apikey():
-    key = os.environ.get("CALLMEBOT_API_KEY", "")
-    if not key:
-        print("WARNING: CALLMEBOT_API_KEY not set. Notifications disabled.")
-    return key
+def get_telegram_config():
+    token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+    chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
+    if not token or not chat_id:
+        print("WARNING: TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not set. Notifications disabled.")
+    return token, chat_id
 
 
 def load_state():
@@ -129,24 +129,25 @@ def check_store(store):
     return in_stock
 
 
-def send_whatsapp(message, api_key):
-    url = "https://api.callmebot.com/whatsapp.php"
-    params = {
-        "phone": PHONE,
+def send_telegram(message, token, chat_id):
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    payload = {
+        "chat_id": chat_id,
         "text": message,
-        "apikey": api_key,
+        "parse_mode": "HTML",
+        "disable_web_page_preview": True,
     }
-    resp = requests.get(url, params=params, timeout=30)
+    resp = requests.post(url, json=payload, timeout=30)
     if resp.status_code == 200:
-        print(f"WhatsApp notification sent successfully")
+        print("Telegram notification sent successfully")
     else:
-        print(f"WhatsApp send failed: {resp.status_code} - {resp.text}")
+        print(f"Telegram send failed: {resp.status_code} - {resp.text}")
 
 
 def main():
     print(f"[{datetime.now().isoformat()}] Watch stock monitor running...")
 
-    api_key = get_callmebot_apikey()
+    token, chat_id = get_telegram_config()
     prev_state = load_state()
     current_state = {}
     new_in_stock = []
@@ -169,17 +170,17 @@ def main():
 
     if new_in_stock:
         print(f"\n  NEW IN STOCK: {len(new_in_stock)} items!")
-        message = f"🚨 WATCH ALERT! {len(new_in_stock)} new item(s) in stock:\n\n"
+        message = f"\U0001f6a8 <b>WATCH ALERT!</b> {len(new_in_stock)} new item(s) in stock:\n\n"
         for item in new_in_stock:
-            message += f"• {item['product']} ({item['variant']}) - ₹{item['price']}\n"
-            message += f"  {item['store']}\n"
-            message += f"  {item['url']}\n\n"
+            message += f"• <b>{item['product']}</b> ({item['variant']})\n"
+            message += f"  ₹{item['price']} - {item['store']}\n"
+            message += f"  <a href=\"{item['url']}\">Buy Now</a>\n\n"
         message += f"Checked at {datetime.now().strftime('%H:%M %d-%b-%Y')}"
 
-        if api_key:
-            send_whatsapp(message, api_key)
+        if token and chat_id:
+            send_telegram(message, token, chat_id)
         else:
-            print(f"\n  Message (not sent - no API key):\n{message}")
+            print(f"\n  Message (not sent - no config):\n{message}")
     else:
         print(f"\n  No new items in stock.")
 
